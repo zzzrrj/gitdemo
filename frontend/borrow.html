@@ -28,6 +28,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .no-user { background: #fef0f0; color: #f56c6c; }
         .card {
@@ -37,15 +39,26 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 12px rgba(0,0,0,0.05);
         }
-        .card h2 { margin-bottom: 15px; font-size: 18px; }
+        .card h2 { margin-bottom: 15px; font-size: 18px; border-left: 4px solid #667eea; padding-left: 12px; }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .form-group label .required { color: #f56c6c; }
         .form-group input, .form-group select, .form-group textarea {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 8px;
             font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
         }
         button {
             padding: 10px 20px;
@@ -54,7 +67,10 @@
             border: none;
             border-radius: 8px;
             cursor: pointer;
+            transition: opacity 0.2s;
         }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-small { padding: 5px 12px; font-size: 12px; }
         .btn-approve { background: #67c23a; }
         .btn-reject { background: #f56c6c; }
@@ -62,18 +78,59 @@
         table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 14px;
         }
         th, td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #e4e7ed;
         }
-        th { background: #f5f7fa; }
-        .status-pending { color: #e6a23c; }
-        .status-approved { color: #67c23a; }
-        .status-rejected { color: #f56c6c; }
-        .status-returned { color: #909399; }
+        th { background: #f5f7fa; font-weight: 500; }
+        .status-warning { color: #e6a23c; }
+        .status-success { color: #67c23a; }
+        .status-danger { color: #f56c6c; }
+        .status-info { color: #909399; }
         .empty { text-align: center; padding: 40px; color: #909399; }
+        .loading { text-align: center; padding: 40px; color: #667eea; }
+        .remark {
+            font-size: 12px;
+            color: #909399;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            width: 400px;
+            max-width: 90%;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .modal-header h3 { color: #333; }
+        .close { cursor: pointer; font-size: 24px; }
+        @media (max-width: 768px) {
+            .form-row { grid-template-columns: 1fr; }
+            table { font-size: 12px; }
+            th, td { padding: 8px; }
+        }
     </style>
 </head>
 <body>
@@ -82,25 +139,45 @@
         <div class="subtitle">模块3：申请、审批、归还</div>
         <div id="userStatus" class="user-status no-user">
             <span>⚠️ 未登录</span>
-            <a href=" " style="color:#667eea">去登录</a >
+            <a href="user.html" style="color:#667eea">去登录</a>
         </div>
     </div>
     
     <div id="applySection" class="card">
         <h2>📝 申请借用</h2>
-        <div class="form-group">
-            <label>选择物资</label>
-            <select id="materialSelect"></select>
-        </div>
-        <div class="form-group">
-            <label>借用数量</label>
-            <input type="number" id="quantity" value="1" min="1">
-        </div>
-        <div class="form-group">
-            <label>借用用途</label>
-            <textarea id="purpose" rows="2" placeholder="请说明借用用途（如：社团招新活动）"></textarea>
-        </div>
-        <button onclick="submitApply()">提交申请</button>
+        <form id="applyForm">
+            <div class="form-group">
+                <label>选择物资 <span class="required">*</span></label>
+                <select id="materialSelect" required>
+                    <option value="">请选择物资</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>借用数量 <span class="required">*</span></label>
+                    <input type="number" id="quantity" value="1" min="1" max="100">
+                </div>
+                <div class="form-group">
+                    <label>可用库存</label>
+                    <input type="text" id="availableStock" readonly disabled style="background:#f5f5f5">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>开始时间</label>
+                    <input type="datetime-local" id="startTime">
+                </div>
+                <div class="form-group">
+                    <label>结束时间</label>
+                    <input type="datetime-local" id="endTime">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>借用用途 <span class="required">*</span></label>
+                <textarea id="purpose" rows="2" placeholder="请说明借用用途（如：社团招新活动需要展板）" required></textarea>
+            </div>
+            <button type="button" id="submitBtn" onclick="submitApply()">提交申请</button>
+        </form>
     </div>
     
     <div id="myAppsSection" class="card">
@@ -112,18 +189,44 @@
         <h2>⏳ 待审批申请</h2>
         <div id="pendingList"></div>
     </div>
+    
+    <!-- 拒绝弹窗 -->
+    <div id="rejectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>拒绝申请</h3>
+                <span class="close" onclick="closeRejectModal()">&times;</span>
+            </div>
+            <div class="form-group">
+                <label>拒绝理由 <span class="required">*</span></label>
+                <textarea id="rejectReason" rows="3" placeholder="请输入拒绝理由"></textarea>
+            </div>
+            <button onclick="confirmReject()" style="width:100%; margin-top:10px;">确认拒绝</button>
+        </div>
+    </div>
 
     <script>
         const API_BASE = 'http://localhost:8080/api';
         let currentUser = null;
+        let pendingApproveId = null;
         
+        // 显示加载状态
+        function showLoading(elementId) {
+            document.getElementById(elementId).innerHTML = '<div class="loading">加载中...</div>';
+        }
+        
+        // 加载用户信息
         async function loadUser() {
             const userStr = localStorage.getItem('user');
             if (userStr) {
                 currentUser = JSON.parse(userStr);
+                const roleText = currentUser.role === 0 ? '学生' : (currentUser.role === 1 ? '社团负责人' : '管理员');
                 document.getElementById('userStatus').innerHTML = `
-                    <span>✅ 当前用户：${currentUser.name} (角色：${currentUser.role===0?'学生':currentUser.role===1?'负责人':'管理员'})</span>
-                    <a href="user.html" style="color:#667eea">切换账号</a >
+                    <span>✅ 当前用户：${currentUser.name} (${currentUser.student_id}) - ${roleText}</span>
+                    <div>
+                        <a href="user.html" style="color:#667eea; margin-right:15px">切换账号</a>
+                        <a href="material.html" style="color:#667eea">物资大厅</a>
+                    </div>
                 `;
                 document.getElementById('userStatus').classList.remove('no-user');
                 
@@ -137,32 +240,66 @@
                 currentUser = null;
                 document.getElementById('userStatus').innerHTML = `
                     <span>⚠️ 请先登录</span>
-                    <a href="user.html" style="color:#667eea">去登录</a >
+                    <a href="user.html" style="color:#667eea">去登录</a>
                 `;
                 document.getElementById('userStatus').classList.add('no-user');
                 document.getElementById('applySection').style.display = 'none';
             }
         }
         
+        // 加载物资列表（用于申请表单）
         async function loadMaterials() {
-            const response = await fetch(`${API_BASE}/materials`);
-            const result = await response.json();
-            if (result.code === 200) {
-                const select = document.getElementById('materialSelect');
-                select.innerHTML = '<option value="">请选择物资</option>' + 
-                    result.data.map(m => `<option value="${m.id}">${m.name} (可用:${m.available_quantity})</option>`).join('');
+            try {
+                const response = await fetch(`${API_BASE}/materials`);
+                const result = await response.json();
+                if (result.code === 200) {
+                    const select = document.getElementById('materialSelect');
+                    select.innerHTML = '<option value="">请选择物资</option>' + 
+                        result.data.map(m => `<option value="${m.id}" data-available="${m.available_quantity}">${m.name} (可用:${m.available_quantity})</option>`).join('');
+                    
+                    // 添加库存显示
+                    select.onchange = function() {
+                        const selected = select.options[select.selectedIndex];
+                        const available = selected.getAttribute('data-available') || 0;
+                        document.getElementById('availableStock').value = available;
+                        document.getElementById('quantity').max = available;
+                    };
+                }
+            } catch (error) {
+                console.error('加载物资失败', error);
             }
         }
         
+        // 提交申请
         async function submitApply() {
             if (!currentUser) { alert('请先登录'); return; }
             
             const material_id = document.getElementById('materialSelect').value;
-            const quantity = document.getElementById('quantity').value;
-            const purpose = document.getElementById('purpose').value;
+            const quantity = parseInt(document.getElementById('quantity').value);
+            const purpose = document.getElementById('purpose').value.trim();
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
             
+            // 表单校验
             if (!material_id) { alert('请选择物资'); return; }
-            if (!purpose.trim()) { alert('请填写借用用途'); return; }
+            if (isNaN(quantity) || quantity <= 0) { alert('借用数量必须大于0'); return; }
+            if (!purpose) { alert('请填写借用用途'); return; }
+            if (purpose.length > 500) { alert('用途描述不能超过500字'); return; }
+            
+            if (startTime && endTime) {
+                if (new Date(startTime) >= new Date(endTime)) {
+                    alert('开始时间必须早于结束时间');
+                    return;
+                }
+                if (new Date(startTime) < new Date()) {
+                    alert('开始时间不能早于当前时间');
+                    return;
+                }
+            }
+            
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = '提交中...';
             
             try {
                 const response = await fetch(`${API_BASE}/borrow/apply`, {
@@ -171,111 +308,196 @@
                     body: JSON.stringify({
                         user_id: currentUser.id,
                         material_id: parseInt(material_id),
-                        quantity: parseInt(quantity),
-                        purpose: purpose
+                        quantity: quantity,
+                        purpose: purpose,
+                        start_time: startTime,
+                        end_time: endTime
                     })
                 });
                 const result = await response.json();
-                alert(result.message);
+                
                 if (result.code === 200) {
+                    alert(`✅ ${result.message}\n单号：${result.data.application_no}`);
                     document.getElementById('purpose').value = '';
+                    document.getElementById('startTime').value = '';
+                    document.getElementById('endTime').value = '';
+                    await loadMaterials();
                     await loadMyApplications();
                     if (currentUser.role >= 1) await loadPending();
+                } else {
+                    alert(`❌ ${result.message}`);
                 }
             } catch (error) {
-                alert('申请失败');
+                alert('申请失败，请检查网络连接');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '提交申请';
             }
         }
         
+        // 加载我的申请记录
         async function loadMyApplications() {
             if (!currentUser) return;
-            const response = await fetch(`${API_BASE}/borrow/my/${currentUser.id}`);
-            const result = await response.json();
+            showLoading('myAppsList');
             
-            if (result.code === 200 && result.data.length > 0) {
-                const statusMap = {0:'待审批',1:'已通过',2:'已拒绝',3:'已归还'};
-                document.getElementById('myAppsList').innerHTML = `
-                    <table>
-                        <tr><th>单号</th><th>物资</th><th>数量</th><th>用途</th><th>状态</th><th>操作</th></tr>
-                        ${result.data.map(a => `
-                            <tr>
-                                <td>${a.application_no}</td>
-                                <td>${a.material_name}</td>
-                                <td>${a.quantity}</td>
-                                <td>${a.purpose}</td>
-                                <td class="status-${a.status===0?'pending':a.status===1?'approved':a.status===2?'rejected':'returned'}">${statusMap[a.status]}</td>
-                                <td>${a.status === 1 && !a.actual_return_time ? `<button class="btn-small btn-return" onclick="returnMaterial(${a.id})">归还</button>` : '-'}</td>
-                            </tr>
-                        `).join('')}
-                    </table>
-                `;
-            } else {
-                document.getElementById('myAppsList').innerHTML = '<div class="empty">暂无申请记录</div>';
+            try {
+                const response = await fetch(`${API_BASE}/borrow/my/${currentUser.id}`);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data.length > 0) {
+                    document.getElementById('myAppsList').innerHTML = `
+                        <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr><th>单号</th><th>物资</th><th>数量</th><th>用途</th><th>借用时间</th><th>状态</th><th>备注</th><th>操作</th></tr>
+                            </thead>
+                            <tbody>
+                                ${result.data.map(a => `
+                                    <tr>
+                                        <td>${a.application_no}</td>
+                                        <td>${a.material_name}</td>
+                                        <td>${a.quantity}</td>
+                                        <td title="${a.purpose}">${a.purpose.length > 30 ? a.purpose.substring(0,30)+'...' : a.purpose}</td>
+                                        <td>${a.start_time ? a.start_time.substring(0,16) : '-'}<br>→<br>${a.end_time ? a.end_time.substring(0,16) : '-'}</td>
+                                        <td class="status-${a.status_type}">${a.status_text}</td>
+                                        <td class="remark" title="${a.approve_remark || ''}">${a.approve_remark || '-'}</td>
+                                        <td>${a.can_return ? `<button class="btn-small btn-return" onclick="returnMaterial(${a.id})">归还</button>` : '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('myAppsList').innerHTML = '<div class="empty">暂无申请记录</div>';
+                }
+            } catch (error) {
+                document.getElementById('myAppsList').innerHTML = '<div class="empty">加载失败</div>';
             }
         }
         
+        // 加载待审批列表
         async function loadPending() {
-            const response = await fetch(`${API_BASE}/borrow/pending`);
-            const result = await response.json();
+            showLoading('pendingList');
             
-            if (result.code === 200 && result.data.length > 0) {
-                document.getElementById('pendingList').innerHTML = `
-                    <table>
-                        <tr><th>申请人</th><th>物资</th><th>数量</th><th>用途</th><th>操作</th></tr>
-                        ${result.data.map(a => `
-                            <tr>
-                                <td>${a.user_name} (${a.student_id})</td>
-                                <td>${a.material_name}</td>
-                                <td>${a.quantity}</td>
-                                <td>${a.purpose}</td>
-                                <td>
-                                    <button class="btn-small btn-approve" onclick="approve(${a.id}, 1)">通过</button>
-                                    <button class="btn-small btn-reject" onclick="reject(${a.id})">拒绝</button>
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </table>
-                `;
-            } else {
-                document.getElementById('pendingList').innerHTML = '<div class="empty">暂无待审批申请</div>';
+            try {
+                const response = await fetch(`${API_BASE}/borrow/pending`);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data.length > 0) {
+                    document.getElementById('pendingList').innerHTML = `
+                        <div style="overflow-x: auto;">
+                        <table>
+                            <thead><tr><th>申请人</th><th>物资</th><th>数量</th><th>用途</th><th>借用时间</th><th>操作</th></tr></thead>
+                            <tbody>
+                                ${result.data.map(a => `
+                                    <tr>
+                                        <td>${a.user_name}<br><small>${a.student_id}</small></td>
+                                        <td>${a.material_name}</td>
+                                        <td>${a.quantity}</td>
+                                        <td title="${a.purpose}">${a.purpose.length > 30 ? a.purpose.substring(0,30)+'...' : a.purpose}</td>
+                                        <td>${a.start_time_display || '-'}<br>→<br>${a.end_time_display || '-'}</td>
+                                        <td>
+                                            <button class="btn-small btn-approve" onclick="approve(${a.id})">✅ 通过</button>
+                                            <button class="btn-small btn-reject" onclick="showRejectModal(${a.id})">❌ 拒绝</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('pendingList').innerHTML = '<div class="empty">暂无待审批申请</div>';
+                }
+            } catch (error) {
+                document.getElementById('pendingList').innerHTML = '<div class="empty">加载失败</div>';
             }
         }
         
-        async function approve(id, status) {
-            const response = await fetch(`${API_BASE}/borrow/approve/${id}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status })
-            });
-            const result = await response.json();
-            alert(result.message);
-            await loadPending();
-            await loadMyApplications();
+        // 通过审批
+        async function approve(id) {
+            if (!confirm('确认通过该借用申请吗？')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/borrow/approve/${id}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 1 })
+                });
+                const result = await response.json();
+                alert(result.message);
+                await loadPending();
+                await loadMyApplications();
+            } catch (error) {
+                alert('操作失败');
+            }
         }
         
-        async function reject(id) {
-            const remark = prompt('请输入拒绝理由', '');
-            const response = await fetch(`${API_BASE}/borrow/approve/${id}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 2, remark })
-            });
-            const result = await response.json();
-            alert(result.message);
-            await loadPending();
-            await loadMyApplications();
+        // 显示拒绝弹窗
+        function showRejectModal(id) {
+            pendingApproveId = id;
+            document.getElementById('rejectReason').value = '';
+            document.getElementById('rejectModal').style.display = 'flex';
         }
         
+        // 关闭拒绝弹窗
+        function closeRejectModal() {
+            document.getElementById('rejectModal').style.display = 'none';
+            pendingApproveId = null;
+        }
+        
+        // 确认拒绝
+        async function confirmReject() {
+            const remark = document.getElementById('rejectReason').value.trim();
+            if (!remark) {
+                alert('请填写拒绝理由');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/borrow/approve/${pendingApproveId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 2, remark: remark })
+                });
+                const result = await response.json();
+                alert(result.message);
+                closeRejectModal();
+                await loadPending();
+                await loadMyApplications();
+            } catch (error) {
+                alert('操作失败');
+            }
+        }
+        
+        // 归还物资
         async function returnMaterial(id) {
-            if (!confirm('确认归还该物资吗？')) return;
-            const response = await fetch(`${API_BASE}/borrow/return/${id}`, { method: 'POST' });
-            const result = await response.json();
-            alert(result.message);
-            await loadMyApplications();
-            if (currentUser.role >= 1) await loadPending();
+            if (!confirm('确认归还该物资吗？归还后将恢复库存。')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/borrow/return/${id}`, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                alert(result.message);
+                await loadMyApplications();
+                if (currentUser.role >= 1) await loadPending();
+            } catch (error) {
+                alert('归还失败');
+            }
+        }
+        
+        // 点击弹窗外关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('rejectModal');
+            if (event.target === modal) {
+                closeRejectModal();
+            }
         }
         
         loadUser();
     </script>
 </body>
-</html>、
+</html>
