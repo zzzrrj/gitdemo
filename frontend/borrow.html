@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模块3 - 借用管理</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+        h1 { margin-bottom: 10px; color: #333; }
+        .subtitle { color: #666; margin-bottom: 20px; }
+        .user-status {
+            background: #e8f4fd;
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .no-user { background: #fef0f0; color: #f56c6c; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+        .card h2 { margin-bottom: 15px; font-size: 18px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .btn-small { padding: 5px 12px; font-size: 12px; }
+        .btn-approve { background: #67c23a; }
+        .btn-reject { background: #f56c6c; }
+        .btn-return { background: #409eff; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e4e7ed;
+        }
+        th { background: #f5f7fa; }
+        .status-pending { color: #e6a23c; }
+        .status-approved { color: #67c23a; }
+        .status-rejected { color: #f56c6c; }
+        .status-returned { color: #909399; }
+        .empty { text-align: center; padding: 40px; color: #909399; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📝 借用管理</h1>
+        <div class="subtitle">模块3：申请、审批、归还</div>
+        <div id="userStatus" class="user-status no-user">
+            <span>⚠️ 未登录</span>
+            <a href=" " style="color:#667eea">去登录</a >
+        </div>
+    </div>
+    
+    <div id="applySection" class="card">
+        <h2>📝 申请借用</h2>
+        <div class="form-group">
+            <label>选择物资</label>
+            <select id="materialSelect"></select>
+        </div>
+        <div class="form-group">
+            <label>借用数量</label>
+            <input type="number" id="quantity" value="1" min="1">
+        </div>
+        <div class="form-group">
+            <label>借用用途</label>
+            <textarea id="purpose" rows="2" placeholder="请说明借用用途（如：社团招新活动）"></textarea>
+        </div>
+        <button onclick="submitApply()">提交申请</button>
+    </div>
+    
+    <div id="myAppsSection" class="card">
+        <h2>📋 我的申请记录</h2>
+        <div id="myAppsList"></div>
+    </div>
+    
+    <div id="pendingSection" class="card" style="display:none">
+        <h2>⏳ 待审批申请</h2>
+        <div id="pendingList"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api';
+        let currentUser = null;
+        
+        async function loadUser() {
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+                currentUser = JSON.parse(userStr);
+                document.getElementById('userStatus').innerHTML = `
+                    <span>✅ 当前用户：${currentUser.name} (角色：${currentUser.role===0?'学生':currentUser.role===1?'负责人':'管理员'})</span>
+                    <a href="user.html" style="color:#667eea">切换账号</a >
+                `;
+                document.getElementById('userStatus').classList.remove('no-user');
+                
+                if (currentUser.role >= 1) {
+                    document.getElementById('pendingSection').style.display = 'block';
+                }
+                await loadMaterials();
+                await loadMyApplications();
+                if (currentUser.role >= 1) await loadPending();
+            } else {
+                currentUser = null;
+                document.getElementById('userStatus').innerHTML = `
+                    <span>⚠️ 请先登录</span>
+                    <a href="user.html" style="color:#667eea">去登录</a >
+                `;
+                document.getElementById('userStatus').classList.add('no-user');
+                document.getElementById('applySection').style.display = 'none';
+            }
+        }
+        
+        async function loadMaterials() {
+            const response = await fetch(`${API_BASE}/materials`);
+            const result = await response.json();
+            if (result.code === 200) {
+                const select = document.getElementById('materialSelect');
+                select.innerHTML = '<option value="">请选择物资</option>' + 
+                    result.data.map(m => `<option value="${m.id}">${m.name} (可用:${m.available_quantity})</option>`).join('');
+            }
+        }
+        
+        async function submitApply() {
+            if (!currentUser) { alert('请先登录'); return; }
+            
+            const material_id = document.getElementById('materialSelect').value;
+            const quantity = document.getElementById('quantity').value;
+            const purpose = document.getElementById('purpose').value;
+            
+            if (!material_id) { alert('请选择物资'); return; }
+            if (!purpose.trim()) { alert('请填写借用用途'); return; }
+            
+            try {
+                const response = await fetch(`${API_BASE}/borrow/apply`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser.id,
+                        material_id: parseInt(material_id),
+                        quantity: parseInt(quantity),
+                        purpose: purpose
+                    })
+                });
+                const result = await response.json();
+                alert(result.message);
+                if (result.code === 200) {
+                    document.getElementById('purpose').value = '';
+                    await loadMyApplications();
+                    if (currentUser.role >= 1) await loadPending();
+                }
+            } catch (error) {
+                alert('申请失败');
+            }
+        }
+        
+        async function loadMyApplications() {
+            if (!currentUser) return;
+            const response = await fetch(`${API_BASE}/borrow/my/${currentUser.id}`);
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data.length > 0) {
+                const statusMap = {0:'待审批',1:'已通过',2:'已拒绝',3:'已归还'};
+                document.getElementById('myAppsList').innerHTML = `
+                    <table>
+                        <tr><th>单号</th><th>物资</th><th>数量</th><th>用途</th><th>状态</th><th>操作</th></tr>
+                        ${result.data.map(a => `
+                            <tr>
+                                <td>${a.application_no}</td>
+                                <td>${a.material_name}</td>
+                                <td>${a.quantity}</td>
+                                <td>${a.purpose}</td>
+                                <td class="status-${a.status===0?'pending':a.status===1?'approved':a.status===2?'rejected':'returned'}">${statusMap[a.status]}</td>
+                                <td>${a.status === 1 && !a.actual_return_time ? `<button class="btn-small btn-return" onclick="returnMaterial(${a.id})">归还</button>` : '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } else {
+                document.getElementById('myAppsList').innerHTML = '<div class="empty">暂无申请记录</div>';
+            }
+        }
+        
+        async function loadPending() {
+            const response = await fetch(`${API_BASE}/borrow/pending`);
+            const result = await response.json();
+            
+            if (result.code === 200 && result.data.length > 0) {
+                document.getElementById('pendingList').innerHTML = `
+                    <table>
+                        <tr><th>申请人</th><th>物资</th><th>数量</th><th>用途</th><th>操作</th></tr>
+                        ${result.data.map(a => `
+                            <tr>
+                                <td>${a.user_name} (${a.student_id})</td>
+                                <td>${a.material_name}</td>
+                                <td>${a.quantity}</td>
+                                <td>${a.purpose}</td>
+                                <td>
+                                    <button class="btn-small btn-approve" onclick="approve(${a.id}, 1)">通过</button>
+                                    <button class="btn-small btn-reject" onclick="reject(${a.id})">拒绝</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                `;
+            } else {
+                document.getElementById('pendingList').innerHTML = '<div class="empty">暂无待审批申请</div>';
+            }
+        }
+        
+        async function approve(id, status) {
+            const response = await fetch(`${API_BASE}/borrow/approve/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            });
+            const result = await response.json();
+            alert(result.message);
+            await loadPending();
+            await loadMyApplications();
+        }
+        
+        async function reject(id) {
+            const remark = prompt('请输入拒绝理由', '');
+            const response = await fetch(`${API_BASE}/borrow/approve/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 2, remark })
+            });
+            const result = await response.json();
+            alert(result.message);
+            await loadPending();
+            await loadMyApplications();
+        }
+        
+        async function returnMaterial(id) {
+            if (!confirm('确认归还该物资吗？')) return;
+            const response = await fetch(`${API_BASE}/borrow/return/${id}`, { method: 'POST' });
+            const result = await response.json();
+            alert(result.message);
+            await loadMyApplications();
+            if (currentUser.role >= 1) await loadPending();
+        }
+        
+        loadUser();
+    </script>
+</body>
+</html>、
