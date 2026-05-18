@@ -1,56 +1,51 @@
-import sqlite3
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from datetime import datetime
 
-conn = sqlite3.connect('material.db')
-c = conn.cursor()
+engine = create_engine('sqlite:///campus_activity.db', connect_args={'check_same_thread': False})
+Base = declarative_base()
+Session = sessionmaker(bind=engine)
+session = Session()
 
-# 创建物资表
-c.execute('''CREATE TABLE IF NOT EXISTS materials (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    category TEXT,
-    total_quantity INTEGER DEFAULT 0,
-    available_quantity INTEGER DEFAULT 0
-)''')
+class User(Base):
+    __tablename__ = 'users'
+    id = Column(Integer, primary_key=True)
+    student_id = Column(String(20), unique=True, nullable=False)
+    name = Column(String(50), nullable=False)
+    password = Column(String(255), nullable=False)
+    role = Column(Integer, default=0)  # 0学生, 1负责人, 2管理员
+    department = Column(String(100))
+    phone = Column(String(20))
+    created_at = Column(DateTime, default=datetime.now)
 
-# 创建用户表
-c.execute('''CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL
-)''')
+class Activity(Base):
+    __tablename__ = 'activities'
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text)
+    location = Column(String(200), nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    max_participants = Column(Integer, default=50)
+    registration_deadline = Column(DateTime, nullable=False)
+    status = Column(Integer, default=1)  # 1进行中, 0已取消, 2已结束
+    created_by = Column(Integer, ForeignKey('users.id'))
+    created_at = Column(DateTime, default=datetime.now)
 
-# 创建借用申请表
-c.execute('''CREATE TABLE IF NOT EXISTS borrow_applications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    application_no TEXT UNIQUE,
-    user_id INTEGER,
-    material_id INTEGER,
-    quantity INTEGER,
-    purpose TEXT,
-    start_time TEXT,
-    end_time TEXT,
-    actual_return_time TEXT,
-    status INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id),
-    FOREIGN KEY(material_id) REFERENCES materials(id)
-)''')
+class Registration(Base):
+    __tablename__ = 'registrations'
+    id = Column(Integer, primary_key=True)
+    activity_id = Column(Integer, ForeignKey('activities.id'))
+    user_id = Column(Integer, ForeignKey('users.id'))
+    status = Column(Integer, default=0)  # 0待确认, 1已确认, 2已取消
+    remark = Column(String(255))
+    created_at = Column(DateTime, default=datetime.now)
 
-# 插入演示数据（可选）
-c.execute("INSERT OR IGNORE INTO materials (name, category, total_quantity, available_quantity) VALUES ('笔记本电脑', '电子设备', 10, 8)")
-c.execute("INSERT OR IGNORE INTO materials (name, category, total_quantity, available_quantity) VALUES ('投影仪', '电子设备', 5, 3)")
-c.execute("INSERT OR IGNORE INTO materials (name, category, total_quantity, available_quantity) VALUES ('课桌椅', '家具', 50, 42)")
-c.execute("INSERT OR IGNORE INTO materials (name, category, total_quantity, available_quantity) VALUES ('白板', '文具', 20, 18)")
+class Checkin(Base):
+    __tablename__ = 'checkins'
+    id = Column(Integer, primary_key=True)
+    registration_id = Column(Integer, ForeignKey('registrations.id'), unique=True)
+    checkin_time = Column(DateTime, default=datetime.now)
+    operator_id = Column(Integer, ForeignKey('users.id'))   # 签到操作人
 
-c.execute("INSERT OR IGNORE INTO users (id, name) VALUES (1, '张三')")
-c.execute("INSERT OR IGNORE INTO users (id, name) VALUES (2, '李四')")
-
-import datetime
-now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-c.execute("INSERT OR IGNORE INTO borrow_applications (application_no, user_id, material_id, quantity, purpose, start_time, end_time, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-          ('B001', 1, 1, 1, '项目演示', '2025-01-01', '2025-01-10', 1, now))
-c.execute("INSERT OR IGNORE INTO borrow_applications (application_no, user_id, material_id, quantity, purpose, start_time, end_time, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-          ('B002', 2, 2, 1, '会议', '2025-03-01', '2025-03-05', 0, now))
-
-conn.commit()
-conn.close()
-print("数据库表创建成功，并已插入示例数据！")
+Base.metadata.create_all(engine)
