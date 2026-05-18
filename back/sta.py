@@ -30,8 +30,6 @@ def apply_borrow():
         "UPDATE materials SET available_quantity = available_quantity - ? WHERE id=?", 
         (data['quantity'], data['material_id'])
     )
-    
-    # 创建申请记录
     conn.execute(
         """INSERT INTO borrow_applications 
            (application_no, user_id, material_id, quantity, purpose, created_at) 
