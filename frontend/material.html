@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模块2 - 物资大厅</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+        h1 { margin-bottom: 10px; color: #333; }
+        .subtitle { color: #666; margin-bottom: 20px; }
+        .search-bar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .search-bar input, .search-bar select {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            min-width: 150px;
+        }
+        .search-bar button {
+            padding: 10px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .material-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .material-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            transition: transform 0.2s;
+        }
+        .material-card:hover { transform: translateY(-5px); }
+        .material-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+        .material-category {
+            color: #909399;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+        .quantity {
+            margin: 12px 0;
+        }
+        .available {
+            color: #67c23a;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .total { color: #909399; font-size: 14px; }
+        .location {
+            color: #909399;
+            font-size: 12px;
+            margin: 8px 0;
+        }
+        .progress-bar {
+            background: #e4e7ed;
+            border-radius: 10px;
+            height: 8px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: #67c23a;
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s;
+        }
+        .apply-btn {
+            width: 100%;
+            padding: 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .apply-btn:disabled {
+            background: #c0c4cc;
+            cursor: not-allowed;
+        }
+        .user-status {
+            background: #e8f4fd;
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .no-user {
+            background: #fef0f0;
+            color: #f56c6c;
+        }
+        .empty {
+            text-align: center;
+            padding: 60px;
+            color: #909399;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📦 物资大厅</h1>
+        <div class="subtitle">模块2：浏览和借用物资</div>
+        
+        <div id="userStatus" class="user-status no-user">
+            <span>⚠️ 未登录</span>
+            <a href="user.html" style="color:#667eea">去登录</a>
+        </div>
+        
+        <div class="search-bar">
+            <input type="text" id="keyword" placeholder="🔍 搜索物资名称">
+            <select id="category">
+                <option value="">全部分类</option>
+                <option value="相机">📷 相机</option>
+                <option value="帐篷">🏕️ 帐篷</option>
+                <option value="展板">📋 展板</option>
+                <option value="音响">🔊 音响</option>
+                <option value="桌椅">🪑 桌椅</option>
+            </select>
+            <button onclick="loadMaterials()">搜索</button>
+        </div>
+    </div>
+    
+    <div id="materialList" class="material-grid">
+        <div class="empty">加载中...</div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api';
+        let currentUser = null;
+        
+        function loadUser() {
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+                currentUser = JSON.parse(userStr);
+                document.getElementById('userStatus').innerHTML = `
+                    <span>✅ 当前用户：${currentUser.name} (${currentUser.student_id})</span>
+                    <a href="user.html" style="color:#667eea">切换账号</a>
+                `;
+                document.getElementById('userStatus').classList.remove('no-user');
+            } else {
+                currentUser = null;
+                document.getElementById('userStatus').innerHTML = `
+                    <span>⚠️ 未登录，请先登录</span>
+                    <a href="user.html" style="color:#667eea">去登录</a>
+                `;
+                document.getElementById('userStatus').classList.add('no-user');
+            }
+        }
+        
+        async function loadMaterials() {
+            const keyword = document.getElementById('keyword').value;
+            const category = document.getElementById('category').value;
+            
+            let url = `${API_BASE}/materials?`;
+            if (keyword) url += `keyword=${encodeURIComponent(keyword)}&`;
+            if (category) url += `category=${encodeURIComponent(category)}&`;
+            
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data.length > 0) {
+                    document.getElementById('materialList').innerHTML = result.data.map(m => `
+                        <div class="material-card">
+                            <div class="material-name">${m.name}</div>
+                            <div class="material-category">${m.category}</div>
+                            <div class="location">📍 ${m.location || '未设置位置'}</div>
+                            <div class="quantity">
+                                <span class="available">${m.available_quantity}</span>
+                                <span class="total"> / ${m.total_quantity}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${(m.available_quantity/m.total_quantity)*100}%"></div>
+                            </div>
+                            ${m.available_quantity > 0 
+                                ? `<button class="apply-btn" onclick="quickApply(${m.id}, '${m.name}')">📝 申请借用</button>`
+                                : `<button class="apply-btn" disabled>❌ 已借完</button>`
+                            }
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('materialList').innerHTML = '<div class="empty">暂无物资</div>';
+                }
+            } catch (error) {
+                document.getElementById('materialList').innerHTML = '<div class="empty">加载失败，请确保后端已启动</div>';
+            }
+        }
+        
+        async function quickApply(materialId, materialName) {
+            if (!currentUser) {
+                alert('请先登录！');
+                window.location.href = 'user.html';
+                return;
+            }
+            
+            const quantity = prompt(`请输入借用数量（${materialName}）`, '1');
+            if (!quantity) return;
+            const purpose = prompt('请说明借用用途', '');
+            if (!purpose) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/borrow/apply`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: currentUser.id,
+                        material_id: materialId,
+                        quantity: parseInt(quantity),
+                        purpose: purpose
+                    })
+                });
+                const result = await response.json();
+                alert(result.message);
+                if (result.code === 200) {
+                    loadMaterials();
+                }
+            } catch (error) {
+                alert('申请失败，请稍后重试');
+            }
+        }
+        
+        loadUser();
+        loadMaterials();
+    </script>
+</body>
+</html>
