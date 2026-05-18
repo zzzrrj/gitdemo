@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模块4 - 数据统计</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: #f0f2f5;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+        h1 { margin-bottom: 10px; color: #333; }
+        .subtitle { color: #666; margin-bottom: 20px; }
+        .user-status {
+            background: #e8f4fd;
+            border-radius: 8px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .no-user { background: #fef0f0; color: #f56c6c; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-5px); }
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            color: #909399;
+            margin-top: 8px;
+            font-size: 14px;
+        }
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+        }
+        .chart-card h2 {
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .chart-container {
+            max-height: 350px;
+        }
+        .two-columns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .two-columns { grid-template-columns: 1fr; }
+        }
+        .material-list {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .material-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #e4e7ed;
+        }
+        .material-name { font-weight: 500; }
+        .material-count { color: #67c23a; font-weight: bold; }
+        .empty { text-align: center; padding: 40px; color: #909399; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📊 数据统计</h1>
+        <div class="subtitle">模块4：物资借用数据分析</div>
+        <div id="userStatus" class="user-status no-user">
+            <span>⚠️ 未登录</span>
+            <a href="user.html" style="color:#667eea">去登录</a>
+        </div>
+    </div>
+    
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">物资总数</div></div>
+        <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">借用次数</div></div>
+        <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">待审批</div></div>
+        <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">已通过</div></div>
+    </div>
+    
+    <div class="two-columns">
+        <div class="chart-card">
+            <h2>📈 借用趋势（近7天）</h2>
+            <div class="chart-container">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="chart-card">
+            <h2>🏷️ 物资分类统计</h2>
+            <div class="chart-container">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="chart-card">
+        <h2>🏆 热门物资 Top5</h2>
+        <div id="popularList" class="material-list">
+            <div class="empty">加载中...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api';
+        let currentUser = null;
+        let trendChart = null;
+        let categoryChart = null;
+        
+        function loadUser() {
+            const userStr = localStorage.getItem('user');
+            if (userStr) {
+                currentUser = JSON.parse(userStr);
+                document.getElementById('userStatus').innerHTML = `
+                    <span>✅ 当前用户：${currentUser.name} (${currentUser.student_id})</span>
+                    <a href="user.html" style="color:#667eea">切换账号</a>
+                `;
+                document.getElementById('userStatus').classList.remove('no-user');
+                loadStatistics();
+            } else {
+                currentUser = null;
+                document.getElementById('userStatus').innerHTML = `
+                    <span>⚠️ 请先登录查看统计数据</span>
+                    <a href="user.html" style="color:#667eea">去登录</a>
+                `;
+                document.getElementById('userStatus').classList.add('no-user');
+            }
+        }
+        
+        async function loadStatistics() {
+            try {
+                // 加载看板数据
+                const dashboardRes = await fetch(`${API_BASE}/statistics/dashboard`);
+                const dashboard = await dashboardRes.json();
+                
+                if (dashboard.code === 200) {
+                    document.getElementById('statsGrid').innerHTML = `
+                        <div class="stat-card"><div class="stat-value">${dashboard.data.total_materials}</div><div class="stat-label">物资总数</div></div>
+                        <div class="stat-card"><div class="stat-value">${dashboard.data.total_borrows}</div><div class="stat-label">借用次数</div></div>
+                        <div class="stat-card"><div class="stat-value">${dashboard.data.pending}</div><div class="stat-label">待审批</div></div>
+                        <div class="stat-card"><div class="stat-value">${dashboard.data.approved}</div><div class="stat-label">已通过</div></div>
+                    `;
+                    
+                    // 分类统计图
+                    if (dashboard.data.categories && dashboard.data.categories.length > 0) {
+                        const ctx2 = document.getElementById('categoryChart').getContext('2d');
+                        if (categoryChart) categoryChart.destroy();
+                        categoryChart = new Chart(ctx2, {
+                            type: 'pie',
+                            data: {
+                                labels: dashboard.data.categories.map(c => c.category),
+                                datasets: [{ data: dashboard.data.categories.map(c => c.count), backgroundColor: ['#667eea', '#67c23a', '#e6a23c', '#f56c6c', '#409eff'] }]
+                            },
+                            options: { responsive: true, maintainAspectRatio: true }
+                        });
+                    }
+                }
+                
+                // 加载趋势数据
+                const trendRes = await fetch(`${API_BASE}/statistics/trend`);
+                const trend = await trendRes.json();
+                
+                if (trend.code === 200 && trend.data.length > 0) {
+                    const ctx1 = document.getElementById('trendChart').getContext('2d');
+                    if (trendChart) trendChart.destroy();
+                    trendChart = new Chart(ctx1, {
+                        type: 'line',
+                        data: {
+                            labels: trend.data.map(t => t.date),
+                            datasets: [{ label: '借用数量', data: trend.data.map(t => t.count), borderColor: '#667eea', backgroundColor: 'rgba(102,126,234,0.1)', tension: 0.4, fill: true }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: true }
+                    });
+                } else {
+                    document.getElementById('trendChart').parentElement.innerHTML = '<div class="empty">暂无趋势数据</div>';
+                }
+                
+                // 加载热门物资
+                const popularRes = await fetch(`${API_BASE}/statistics/popular`);
+                const popular = await popularRes.json();
+                
+                if (popular.code === 200 && popular.data.length > 0) {
+                    document.getElementById('popularList').innerHTML = popular.data.map((p, index) => `
+                        <div class="material-item">
+                            <span class="material-name">${index + 1}. ${p.name}</span>
+                            <span class="material-count">${p.borrow_count} 次</span>
+                        </div>
+                    `).join('');
+                } else {
+                    document.getElementById('popularList').innerHTML = '<div class="empty">暂无数据</div>';
+                }
+                
+            } catch (error) {
+                console.error('加载统计数据失败', error);
+                document.getElementById('statsGrid').innerHTML = '<div class="empty">加载失败，请确保后端已启动</div>';
+            }
+        }
+        
+        loadUser();
+    </script>
+</body>
+</html>
