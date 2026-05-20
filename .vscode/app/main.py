@@ -1048,7 +1048,7 @@ def profile_page(user: User):
                     del st.session_state['user_id']
                     st.rerun()
 
-# ==================== 主程序 ====================
+
 def main():
     if 'user_id' not in st.session_state:
         login_page()
